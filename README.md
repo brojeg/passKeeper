@@ -35,46 +35,46 @@ passKeeper is a robust tool that allows for secure handling and management of se
 
 ## Client Commands
 
-###Setup
+### Setup
 Sets up initial configurations for passKeeper. This includes setting up the username and password.
 `passKeeper setup`
 
 
-###Login
+### Login
 Initiates login process for a user with an existing passKeeper account.
 `passKeeper login`
 
 
-###Logout
+### Logout
 Clears all locally stored passKeeper configuration.
 `passKeeper logout`
 
 
-###New
+### New
 Generate a new secret of a specific type. Options include key-value pair (kv), credit card details (cc), text (txt), or file.
 `passKeeper new [txt|file|kv|cc]`
 
 
-###List
+### List
 Displays a list of all secrets currently stored in passKeeper.
 `passKeeper list`
 
 
-###Delete
+### Delete
 Removes a secret stored in passKeeper by its unique identifier.
 `passKeeper delete [secret_id]`
 
 
-###Edit
+### Edit
 Edits the contents of a secret stored in passKeeper by its unique identifier.
 `passKeeper edit [secret_id]`
 
 
-###Describe
+### Describe
 Provides comprehensive details of a secret stored in passKeeper by its unique identifier.
 `passKeeper describe [secret_id]`
 
 
-###Dump
+### Dump
 Extracts and exports the binary data of a secret by its unique identifier on the disk.
 `passKeeper dump [secret_id]`
