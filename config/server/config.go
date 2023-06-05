@@ -13,13 +13,12 @@ import (
 	"passKeeper/internal/server/controllers"
 
 	"github.com/caarlos0/env"
-	"github.com/jinzhu/gorm"
 	"github.com/joho/godotenv"
 )
 
 type App struct {
 	config ServerConfig
-	dbConn *gorm.DB
+	repo   db.DatabaseRepository
 }
 
 type ServerConfig struct {
@@ -43,12 +42,12 @@ type ServerLog struct {
 }
 
 func (a *App) NewWebServer(conf App) {
-	controllers.NewHTTPServer(a.config.ServerPort, conf.dbConn)
-	a.dbConn = conf.dbConn
+	controllers.NewHTTPServer(a.config.ServerPort, conf.repo)
+	a.repo = conf.repo
 }
 
 func (a App) CreateTables() {
-	a.dbConn.AutoMigrate(&acc.Account{}, &sec.Secret{})
+	a.repo.AutoMigrate(&acc.Account{}, &sec.Secret{})
 }
 
 func (a App) DefineJWTConfig() {
@@ -56,7 +55,8 @@ func (a App) DefineJWTConfig() {
 }
 
 func New(sc ServerConfig) *App {
-	return &App{config: sc, dbConn: db.Get(sc.Database)}
+	repo := db.Get(sc.Database)
+	return &App{config: sc, repo: repo}
 }
 
 func NewServerConfig() *ServerConfig {
