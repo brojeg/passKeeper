@@ -1,10 +1,17 @@
 package main
 
-import "passKeeper/internal/cmd"
+import (
+	"passKeeper/internal/cmd"
+
+	"github.com/charmbracelet/log"
+)
 
 func main() {
 
 	root := cmd.NewRootCommand()
-	cmd.Execute(root)
+	err := cmd.Execute(root)
+	if err != nil {
+		log.Error(err)
+	}
 
 }

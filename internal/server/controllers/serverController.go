@@ -14,7 +14,7 @@ func NewHTTPServer(port string, repo db.DatabaseRepository) {
 
 	router := NewRouter(repo)
 
-	if err := http.ListenAndServe(port, router); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := http.ListenAndServeTLS(":443", "server.crt", "server.key", router); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Printf("Cannot start http.ListenAndServe. Error is: /n %e", err)
 	} else {
 		log.Println("application stopped gracefully")

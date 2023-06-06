@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -15,7 +16,6 @@ import (
 
 	"passKeeper/internal/cmd/tui/list"
 	secret "passKeeper/internal/models/secret"
-	client "passKeeper/pkg"
 	clientRequest "passKeeper/pkg"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -46,84 +46,62 @@ type Username struct {
 	Username string `yaml:"username,omitempty"`
 }
 
-func GetApplication() *Application {
-	var app Application
+func (app *Application) initialize() error {
 	token, err := GetKey("token")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("could not get token: %v", err)
 	}
 	host, err := GetKey("host")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("could not get host: %v", err)
 	}
-
+	usernameStruct, err := GetUsername()
+	if err != nil {
+		return fmt.Errorf("could not get username: %v", err)
+	}
+	password, err := GetKey(AppName)
+	if err != nil {
+		return fmt.Errorf("could not get password: %v", err)
+	}
 	app.Config.Server.Token = token
 	app.Config.Server.Host = host
+	app.Config.Server.Username = usernameStruct.Username
+	app.Config.Server.Password = password
 
-	app.client = &http.Client{Timeout: time.Second * 10}
+	customTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	app.client = &http.Client{Timeout: time.Second * 10, Transport: customTransport}
 
+	return nil
+}
+
+func GetApplication() *Application {
+	var app Application
+	app.initialize()
 	return &app
 }
 
-func (app Application) Setup() *Application {
-	cfg, err := GetUsername()
-	if err != nil {
-		log.Fatal("Can't read configuration. Try running `passKeeper config` to fix the issue.", "err", err)
-	}
-
-	if cfg.Username == "" {
-		log.Fatal("Username not set. Run `passKeeper config` first.")
-	}
-	app.Config.Server.Username = cfg.Username
-
-	app.Config.Server.Password, err = GetKey(AppName)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	app.client = &http.Client{Timeout: time.Second * 10}
-
-	app = *app.Register()
+func (app *Application) initializeAndLogin() {
+	app.initialize()
+	app.login()
+}
+func (app *Application) Setup() *Application {
+	app.initialize()
+	app.Register()
 	if app.Config.Server.Token == "" {
 		log.Fatal("Registration on server has failed")
 	}
-
-	return &app
+	return app
 }
-func (app Application) Login() *Application {
-	cfg, err := GetUsername()
-	if err != nil {
-		log.Fatal("Can't read configuration. Try running `passKeeper config` to fix the issue.", "err", err)
-	}
-
-	if cfg.Username == "" {
-		log.Fatal("Username not set. Run `passKeeper config` first.")
-	}
-	app.Config.Server.Username = cfg.Username
-
-	app.Config.Server.Password, err = GetKey(AppName)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	app.client = &http.Client{Timeout: time.Second * 10}
-
-	app = *app.doLogin()
+func (app *Application) Login() *Application {
+	app.initializeAndLogin()
 	if app.Config.Server.Token == "" {
-		log.Fatal("Registration on server has failed")
+		log.Fatal("Login on server has failed")
 	}
-
-	return &app
+	return app
 }
-func (app Application) doLogin() *Application {
-	account, err := clientRequest.SendLoginRequest(app.client, app.Config.Server.Host, app.Config.Server.Username, app.Config.Server.Password)
-	if err != nil {
-		log.Error(err)
-	}
-	app.Config.Server.Token = account
 
-	return &app
-}
 func (app Application) Register() *Application {
 	account, err := clientRequest.SendRegisterRequest(app.client, app.Config.Server.Host, app.Config.Server.Username, app.Config.Server.Password)
 	if err != nil {
@@ -134,37 +112,18 @@ func (app Application) Register() *Application {
 	return &app
 }
 
-func (app Application) login() *Application {
-	cfg, err := GetUsername()
-	if err != nil {
-		log.Fatal("Can't read configuration. Try running `passKeeper config` to fix the issue.", "err", err)
-	}
-
-	if cfg.Username == "" {
-		log.Fatal("Username not set. Run `passKeeper config` first.")
-	}
-	username := cfg.Username
-
-	password, err := GetKey(AppName)
-	if err != nil {
-		os.Exit(1)
-	}
-	host, err := GetKey("host")
-	if err != nil {
-		os.Exit(1)
-	}
-
-	token, err := clientRequest.SendLoginRequest(app.client, host, username, password)
+func (app *Application) login() *Application {
+	app.initialize()
+	token, err := clientRequest.SendLoginRequest(app.client, app.Config.Server.Host, app.Config.Server.Username, app.Config.Server.Password)
 	if err != nil {
 		log.Printf("%s", err.Error())
 	}
 	app.Config.Server.Token = token
 
-	return &app
+	return app
 }
-func (app Application) ListSecrets() *[]secret.Secret {
-
-	app = *app.login()
+func (app *Application) ListSecrets() *[]secret.Secret {
+	app.initializeAndLogin()
 	secrets, err := clientRequest.SendGetSecretList(app.client, app.Config.Server.Host, app.Config.Server.Token)
 	if err != nil {
 		log.Printf(err.Error())
@@ -174,7 +133,7 @@ func (app Application) ListSecrets() *[]secret.Secret {
 	return &secrets
 }
 
-func List(app Application, ds []secret.DecodedSecret) {
+func List(app Application, ds []secret.DecodedSecret) error {
 	columns := []table.Column{
 		{Title: "SecretID", Width: 10},
 		{Title: "Metadata", Width: 25},
@@ -195,15 +154,15 @@ func List(app Application, ds []secret.DecodedSecret) {
 
 	m := list.NewModel(columns, rows)
 	if _, err := tea.NewProgram(m).Run(); err != nil {
-		fmt.Printf("could not start passKeeper: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("could not start passKeeper: %s\n", err)
 	}
+	return nil
 }
 
 func (app Application) CreateTextSecret(meta, data string) error {
 
 	app = *app.login()
-	err := client.PostTextSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, data, 0)
+	err := clientRequest.PostTextSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, data, 0)
 	if err != nil {
 		return err
 	}
@@ -213,7 +172,7 @@ func (app Application) CreateTextSecret(meta, data string) error {
 func (app Application) EditTextSecret(id uint, meta, data string) error {
 
 	app = *app.login()
-	err := client.PostTextSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, data, id)
+	err := clientRequest.PostTextSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, data, id)
 	if err != nil {
 		return err
 	}
@@ -223,7 +182,7 @@ func (app Application) EditTextSecret(id uint, meta, data string) error {
 func (app Application) CreateKVSecret(meta, key, value string) error {
 
 	app = *app.login()
-	err := client.PostKVSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, key, value, 0)
+	err := clientRequest.PostKVSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, key, value, 0)
 	if err != nil {
 		return err
 	}
@@ -233,7 +192,7 @@ func (app Application) CreateKVSecret(meta, key, value string) error {
 func (app Application) EditKVSecret(id uint, meta, key, value string) error {
 
 	app = *app.login()
-	err := client.PostKVSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, key, value, id)
+	err := clientRequest.PostKVSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, key, value, id)
 	if err != nil {
 		return err
 	}
@@ -244,7 +203,7 @@ func (app Application) EditKVSecret(id uint, meta, key, value string) error {
 func (app Application) CreateCCSecret(meta, cnn, exp, cvv, cholder string) error {
 
 	app = *app.login()
-	err := client.PostCCSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, cnn, exp, cvv, cholder, 0)
+	err := clientRequest.PostCCSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, cnn, exp, cvv, cholder, 0)
 	if err != nil {
 		return err
 	}
@@ -254,7 +213,7 @@ func (app Application) CreateCCSecret(meta, cnn, exp, cvv, cholder string) error
 func (app Application) CreateFileSecret(meta, path string) error {
 
 	app = *app.login()
-	err := client.PostFileSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, path, 0)
+	err := clientRequest.PostFileSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, path, 0)
 	if err != nil {
 		return err
 	}
@@ -265,7 +224,7 @@ func (app Application) CreateFileSecret(meta, path string) error {
 func (app Application) EditCCSecret(id uint, meta, cnn, exp, cvv, cholder string) error {
 
 	app = *app.login()
-	err := client.PostCCSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, cnn, exp, cvv, cholder, id)
+	err := clientRequest.PostCCSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, meta, cnn, exp, cvv, cholder, id)
 	if err != nil {
 		return err
 	}
@@ -276,7 +235,7 @@ func (app Application) EditCCSecret(id uint, meta, cnn, exp, cvv, cholder string
 func (app Application) GetSecret(id string) (*secret.Secret, error) {
 
 	app = *app.login()
-	sec, err := client.GetSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, id)
+	sec, err := clientRequest.GetSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, id)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +246,7 @@ func (app Application) GetSecret(id string) (*secret.Secret, error) {
 func (app Application) DeleteSecret(id string) error {
 
 	app = *app.login()
-	err := client.DeleteSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, id)
+	err := clientRequest.DeleteSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, id)
 	if err != nil {
 		return err
 	}
@@ -298,7 +257,7 @@ func (app Application) DeleteSecret(id string) error {
 func (app Application) DumpSecret(id string) (string, error) {
 
 	app = *app.login()
-	sec, err := client.GetSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, id)
+	sec, err := clientRequest.GetSecret(app.client, app.Config.Server.Host, app.Config.Server.Token, id)
 	if err != nil {
 		return "", err
 	}
@@ -405,8 +364,6 @@ func ClearLocalData() error {
 func DeleteFolderStructure() error {
 	home, _ := os.UserHomeDir()
 	fullPath := filepath.Join(home, "passKeeper")
-
-	// clean up after test
 
 	err := os.RemoveAll(fullPath)
 	if err != nil {

@@ -16,7 +16,7 @@ func sendJSONRequest(client *http.Client, method, host, endpoint, token string, 
 		return nil, err
 	}
 
-	url := "http://" + host + endpoint
+	url := "https://" + host + endpoint
 	req, err := http.NewRequest(method, url, payloadBuf)
 	if err != nil {
 		return nil, err
