@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"log"
-	"os"
 
 	app "passKeeper/internal/cmd/app"
 	cc "passKeeper/internal/cmd/tui/new/creditcard"
@@ -34,11 +33,12 @@ var (
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute(root *cobra.Command) {
+func Execute(root *cobra.Command) error {
 	err := root.Execute()
 	if err != nil {
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
 func NewRootCommand() *cobra.Command {
@@ -63,14 +63,12 @@ var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in to an existing passKeeper account.",
 	Long:  "Initiate login process for a user with an existing passKeeper account. Enter your login credentials when prompted.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error { // Replace Run with RunE
 		login := true
-		err := conf.SetupTui(login)
-		if err != nil {
-			fmt.Printf("could not start passKeeper: %s\n", err)
-			os.Exit(1)
+		if err := conf.SetupTui(login); err != nil {
+			return fmt.Errorf("could not start passKeeper: %s", err)
 		}
-
+		return nil
 	},
 }
 
@@ -78,12 +76,11 @@ var logoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Delete local passKeeper configuration.",
 	Long:  "Clear all locally stored passKeeper configuration. This ensures that your sensitive data is safe and secure after usage.",
-	Run: func(cmd *cobra.Command, args []string) {
-		err := app.ClearLocalData()
-		if err != nil {
-			fmt.Printf("Remove local secret and files attempt has failed: %s\n", err)
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := app.ClearLocalData(); err != nil {
+			return fmt.Errorf("remove local secret and files attempt has failed: %s", err)
 		}
+		return nil
 	},
 }
 
@@ -91,27 +88,21 @@ var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Set up initial passKeeper configuration.",
 	Long:  "Establish initial configurations for passKeeper. This includes setting up the username and password. If these parameters are not provided, a user interface will guide the setup process.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		login := false
 		if username == "" || password == "" {
-			err := conf.SetupTui(login)
-			if err != nil {
-				fmt.Printf("could not start passKeeper: %s\n", err)
-				os.Exit(1)
+			if err := conf.SetupTui(login); err != nil {
+				return fmt.Errorf("could not start passKeeper: %s", err)
 			}
 		} else {
-
-			err := app.SetUsername(username)
-			if err != nil {
-				log.Fatal(err)
+			if err := app.SetUsername(username); err != nil {
+				return err
 			}
-
-			err = app.SetKey(app.AppName, password)
-			if err != nil {
-				log.Fatal(err)
+			if err := app.SetKey(app.AppName, password); err != nil {
+				return err
 			}
 		}
-
+		return nil
 	},
 }
 
@@ -148,52 +139,41 @@ var editCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Modify a secret.",
 	Long:  "Edit the contents of a secret stored in passKeeper by its unique identifier. Depending on the type of the secret (key-value pair, text, or credit card), the corresponding user interface will be invoked for modification.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		app := app.GetApplication()
 
 		if len(args) > 1 || len(args) == 0 {
-			log.Printf("%s", "Wrong number of arguments. Expected only one id.")
-			return
-		} else {
-
-			secret, err := app.GetSecret(args[0])
-			if err != nil {
-				log.Printf("%s", "Cannot get secret")
-				return
-			}
-
-			decodedSecret, err := sec.GetDecodedSecrets([]sec.Secret{*secret})
-			if err != nil {
-				log.Printf("%s", "Cannot decode secret")
-				return
-			}
-			switch v := decodedSecret[0].Value.(type) {
-			case *sec.KeyValue:
-				err := kv.EditKVTui(*v, secret.Metadata, secret.ID)
-				if err != nil {
-					fmt.Printf("could not start passKeeper: %s\n", err)
-					os.Exit(1)
-				}
-			case *sec.Text:
-				err := txt.EditTextTui(*v, secret.Metadata, secret.ID)
-				if err != nil {
-					fmt.Printf("could not start passKeeper: %s\n", err)
-					os.Exit(1)
-				}
-			case *sec.CreditCard:
-				err := cc.EditCCTui(*v, secret.Metadata, secret.ID)
-				if err != nil {
-					fmt.Printf("could not start passKeeper: %s\n", err)
-					os.Exit(1)
-				}
-			case *sec.ByteSlice:
-
-			default:
-				return
-			}
-
+			return fmt.Errorf("wrong number of arguments. expected only one id")
 		}
 
+		secret, err := app.GetSecret(args[0])
+		if err != nil {
+			return fmt.Errorf("cannot get secret")
+		}
+
+		decodedSecret, err := sec.GetDecodedSecrets([]sec.Secret{*secret})
+		if err != nil {
+			return fmt.Errorf("cannot decode secret")
+		}
+
+		switch v := decodedSecret[0].Value.(type) {
+		case *sec.KeyValue:
+			if err := kv.EditKVTui(*v, secret.Metadata, secret.ID); err != nil {
+				return fmt.Errorf("could not start passKeeper: %s", err)
+			}
+		case *sec.Text:
+			if err := txt.EditTextTui(*v, secret.Metadata, secret.ID); err != nil {
+				return fmt.Errorf("could not start passKeeper: %s", err)
+			}
+		case *sec.CreditCard:
+			if err := cc.EditCCTui(*v, secret.Metadata, secret.ID); err != nil {
+				return fmt.Errorf("could not start passKeeper: %s", err)
+			}
+		case *sec.ByteSlice:
+		default:
+			return nil
+		}
+		return nil
 	},
 }
 
@@ -250,29 +230,23 @@ var newTextCmd = &cobra.Command{
 	Use:   "txt",
 	Short: "Create a new text secret.",
 	Long:  "Generate a new secret of the 'text' type. The secret contain plain text data.",
-	Run: func(cmd *cobra.Command, args []string) {
-
-		err := txt.NewTextTui()
-		if err != nil {
-			fmt.Printf("could not start passKeeper: %s\n", err)
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := txt.NewTextTui(); err != nil {
+			return fmt.Errorf("could not start passKeeper: %s", err)
 		}
-
+		return nil
 	},
 }
 
 var newFileCmd = &cobra.Command{
 	Use:   "file",
 	Short: "Create a new file secret.",
-	Long:  "Generate a new secret of the 'file' type. The secret can contain bynary data.",
-	Run: func(cmd *cobra.Command, args []string) {
-
-		err := f.FileTui()
-		if err != nil {
-			fmt.Printf("could not start passKeeper: %s\n", err)
-			os.Exit(1)
+	Long:  "Generate a new secret of the 'file' type. The secret can contain binary data.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := f.FileTui(); err != nil {
+			return fmt.Errorf("could not start passKeeper: %s", err)
 		}
-
+		return nil
 	},
 }
 
@@ -280,14 +254,11 @@ var newKVCmd = &cobra.Command{
 	Use:   "kv",
 	Short: "Create a new key-value secret.",
 	Long:  "Generate a new secret of the 'key-value' type. The secret can contain a key-value pair.",
-	Run: func(cmd *cobra.Command, args []string) {
-
-		err := kv.NewKVTui()
-		if err != nil {
-			fmt.Printf("could not start passKeeper: %s\n", err)
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := kv.NewKVTui(); err != nil {
+			return fmt.Errorf("could not start passKeeper: %s", err)
 		}
-
+		return nil
 	},
 }
 
@@ -295,13 +266,10 @@ var newCCCmd = &cobra.Command{
 	Use:   "cc",
 	Short: "Create a new credit card secret.",
 	Long:  "Generate a new secret of the 'credit card' type. The secret can contain credit card information.",
-	Run: func(cmd *cobra.Command, args []string) {
-
-		err := cc.NewCCTui()
-		if err != nil {
-			fmt.Printf("could not start passKeeper: %s\n", err)
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := cc.NewCCTui(); err != nil {
+			return fmt.Errorf("could not start passKeeper: %s", err)
 		}
-
+		return nil
 	},
 }

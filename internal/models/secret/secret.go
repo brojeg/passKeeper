@@ -3,12 +3,8 @@ package models
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"regexp"
-
-	"github.com/jinzhu/gorm"
 )
 
 type SecretRequest struct {
@@ -42,44 +38,6 @@ func NewSecret(userID uint, secretType string, value ByteConvertible, meta strin
 	return Secret{UserID: userID, Value: bytes, SecretType: secretType, Metadata: meta}, nil
 }
 
-func GetSecret(secretid uint, dbConn *gorm.DB) *Secret {
-	secret := Secret{}
-	err := dbConn.Table("secrets").Where("ID = ?", secretid).Find(&secret).Error
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-
-	return &secret
-}
-
-func (s *Secret) Save(dbConn *gorm.DB) (*Secret, error) {
-	dbConn.Save(s)
-
-	if s.ID == 0 {
-		return nil, errors.New("failed to create secret, connection error")
-	}
-	return s, nil
-}
-
-func (s *Secret) Delete(dbConn *gorm.DB) {
-
-	sec := GetSecret(s.ID, dbConn)
-	if sec.UserID == s.UserID {
-		dbConn.Delete(s)
-	}
-}
-
-func GetSecretsForUser(userID uint, dbConn *gorm.DB) ([]Secret, error) {
-	secrets := []Secret{}
-	err := dbConn.Table("secrets").Where("User_ID = ?", userID).Find(&secrets).Error
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-
-	return secrets, nil
-}
 func GetSecretFromRequest(req SecretRequest, user uint) (ByteConvertible, error) {
 	var value ByteConvertible
 	switch req.Type {

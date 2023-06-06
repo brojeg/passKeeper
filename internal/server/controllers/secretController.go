@@ -5,15 +5,15 @@ import (
 	"log"
 	"net/http"
 	auth "passKeeper/internal/models/auth"
+	db "passKeeper/internal/models/database"
 	sec "passKeeper/internal/models/secret"
 	server "passKeeper/internal/models/server"
 	"strconv"
 
 	"github.com/go-chi/chi"
-	"github.com/jinzhu/gorm"
 )
 
-func CreateSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
+func CreateSecret(repo db.DatabaseRepository) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.GetUserFromContext(r.Context())
 		if !ok {
@@ -44,17 +44,17 @@ func CreateSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) 
 			secret.ID = req.ID
 		}
 
-		s, err := secret.Save(dbConn)
+		savedSecret, err := repo.SaveSecret(&secret)
 		if err != nil {
-			log.Printf("cannot create secret - %s", s.SecretType)
+			log.Printf("cannot create secret - %s", secret.SecretType)
 			server.RespondWithMessage(w, 500, "Could not save secret")
 			return
 		}
 
-		server.RespondWithMessage(w, 200, secret)
+		server.RespondWithMessage(w, 200, savedSecret)
 	}
 }
-func DeleteSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
+func DeleteSecret(repo db.DatabaseRepository) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.GetUserFromContext(r.Context())
 		if !ok {
@@ -73,13 +73,17 @@ func DeleteSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) 
 		secretToDelete.ID = uint(i)
 		secretToDelete.UserID = user
 
-		secretToDelete.Delete(dbConn)
+		err = repo.DeleteSecret(&secretToDelete)
+		if err != nil {
+			server.RespondWithMessage(w, 500, "Could not delete secret")
+			return
+		}
 
 		server.RespondWithMessage(w, 200, nil)
 	}
 }
 
-func GetSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
+func GetSecret(repo db.DatabaseRepository) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		user, ok := auth.GetUserFromContext(r.Context())
@@ -95,8 +99,8 @@ func GetSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 			server.RespondWithMessage(w, 400, "Bad request.")
 		}
 
-		data := sec.GetSecret(uint(i), dbConn)
-		if data == nil {
+		data, err := repo.GetSecretByID(uint(i))
+		if err != nil {
 			server.RespondWithMessage(w, 500, "Could not get Secret")
 		}
 		if data != nil {
@@ -108,17 +112,19 @@ func GetSecret(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetSecrets(dbConn *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
+func GetSecrets(repo db.DatabaseRepository) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.GetUserFromContext(r.Context())
 		if !ok {
 			server.RespondWithMessage(w, 500, "Could not get user from context")
+			return
 		}
-		data, err := sec.GetSecretsForUser(user, dbConn)
+		secrets, err := repo.GetSecretsForUser(user)
 		if err != nil {
-			server.RespondWithMessage(w, 500, "Could not get Secret")
+			server.RespondWithMessage(w, 500, "Could not get secrets")
+			return
 		}
-		resp := server.Response{Message: data, ServerCode: 200}
+		resp := server.Response{Message: secrets, ServerCode: 200}
 		server.RespondWithMessage(w, resp.ServerCode, resp.Message)
 	}
 }
