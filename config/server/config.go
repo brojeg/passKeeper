@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -10,7 +11,6 @@ import (
 	auth "passKeeper/internal/models/auth"
 	db "passKeeper/internal/models/database"
 	sec "passKeeper/internal/models/secret"
-	"passKeeper/internal/server/controllers"
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
@@ -19,6 +19,7 @@ import (
 type App struct {
 	config ServerConfig
 	repo   db.DatabaseRepository
+	Server *http.Server
 }
 
 type ServerConfig struct {
@@ -41,22 +42,12 @@ type ServerLog struct {
 	Log string `env:"SERVER_LOG"`
 }
 
-func (a *App) NewWebServer(conf App) {
-	controllers.NewHTTPServer(a.config.ServerPort, conf.repo)
-	a.repo = conf.repo
-}
-
 func (a App) CreateTables() {
 	a.repo.AutoMigrate(&acc.Account{}, &sec.Secret{})
 }
 
 func (a App) DefineJWTConfig() {
 	auth.InitJWTPassword(a.config.JWTPassword, a.config.ExpirationTime)
-}
-
-func New(sc ServerConfig) *App {
-	repo := db.Get(sc.Database)
-	return &App{config: sc, repo: repo}
 }
 
 func NewServerConfig() *ServerConfig {
