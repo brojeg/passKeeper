@@ -2,13 +2,15 @@ package main
 
 import (
 	config "passKeeper/config/server"
+	app "passKeeper/internal/models/app"
+	db "passKeeper/internal/models/database"
 )
 
 func main() {
 	sc := config.NewServerConfig()
-	app := config.New(*sc)
-	app.DefineJWTConfig()
+	repo := db.Get(sc.Database)
+	app := app.NewApp(*sc, repo)
 	app.CreateTables()
-	app.NewWebServer(*app)
+	app.StartWebServer()
 
 }

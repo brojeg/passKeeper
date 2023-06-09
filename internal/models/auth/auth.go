@@ -17,12 +17,11 @@ var (
 	ContextUserKey = contextKey("user")
 )
 
-// var jwtPassword string
-var settings JWTSettings
-
-func InitJWTPassword(pass string, expTime int) {
-	settings.jwtPassword = pass
-	settings.expirationTime = expTime
+func InitJWTPassword(pass string, expTime int) JWTSettings {
+	return JWTSettings{
+		jwtPassword:    pass,
+		expirationTime: expTime,
+	}
 }
 
 type JWTSettings struct {
@@ -40,11 +39,11 @@ func GetUserFromContext(ctx context.Context) (uint, bool) {
 	return caller, ok
 }
 
-func GenerateToken(id uint) string {
-	expirationTime := time.Now().Add(time.Duration(settings.expirationTime) * time.Minute)
+func GenerateToken(id uint, jwtSettings JWTSettings) string {
+	expirationTime := time.Now().Add(time.Duration(jwtSettings.expirationTime) * time.Minute)
 	tk := &Token{UserID: id, StandardClaims: jwt.StandardClaims{ExpiresAt: expirationTime.Unix()}}
 	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), tk)
-	tokenString, err := token.SignedString([]byte(settings.jwtPassword))
+	tokenString, err := token.SignedString([]byte(jwtSettings.jwtPassword))
 	if err != nil {
 		panic(err)
 	}
@@ -65,12 +64,12 @@ func IsPasswordsEqual(existing, new string) bool {
 	return true
 }
 
-func ValidateToken(r *http.Request) server.Response {
+func ValidateToken(r *http.Request, jwtSettings JWTSettings) server.Response {
 	tokenHeader := r.Header.Get("Authorization")
-	expirationTime := time.Now().Add(time.Duration(settings.expirationTime) * time.Minute)
+	expirationTime := time.Now().Add(time.Duration(jwtSettings.expirationTime) * time.Minute)
 	tk := &Token{StandardClaims: jwt.StandardClaims{ExpiresAt: expirationTime.Unix()}}
 	token, err := jwt.ParseWithClaims(tokenHeader, tk, func(token *jwt.Token) (interface{}, error) {
-		return []byte(settings.jwtPassword), nil
+		return []byte(jwtSettings.jwtPassword), nil
 	})
 	if err != nil {
 		return server.Response{Message: "Malformed authentication token", ServerCode: 401}

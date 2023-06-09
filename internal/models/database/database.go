@@ -23,9 +23,9 @@ func Get(connStr string) DatabaseRepository {
 
 type DatabaseRepository interface {
 	AutoMigrate(models ...interface{}) error
-	CreateAccount(account *acc.Account) server.Response
+	CreateAccount(account *acc.Account, jwtSettings auth.JWTSettings) server.Response
 	ValidateAccount(account *acc.Account) server.Response
-	LoginAccount(email, password string) server.Response
+	LoginAccount(email, password string, jwtSettings auth.JWTSettings) server.Response
 	GetSecretByID(secretID uint) (*sec.Secret, error)
 	SaveSecret(s *sec.Secret) (*sec.Secret, error)
 	GetSecretsForUser(userID uint) ([]sec.Secret, error)
@@ -43,7 +43,7 @@ func (g *GormRepository) AutoMigrate(models ...interface{}) error {
 	}
 	return nil
 }
-func (g *GormRepository) LoginAccount(email, password string) server.Response {
+func (g *GormRepository) LoginAccount(email, password string, jwtSettings auth.JWTSettings) server.Response {
 	account := &acc.Account{}
 	err := g.db.Table("accounts").Where("login = ?", email).First(account).Error
 	if err != nil {
@@ -56,11 +56,11 @@ func (g *GormRepository) LoginAccount(email, password string) server.Response {
 	if !auth.IsPasswordsEqual(account.Password, password) {
 		return server.Message("Invalid login credentials. Please try again", 401)
 	}
-	tokenString := account.GetToken()
+	tokenString := account.GetToken(jwtSettings)
 	return server.Response{ServerCode: 200, Message: tokenString}
 }
 
-func (g *GormRepository) CreateAccount(account *acc.Account) server.Response {
+func (g *GormRepository) CreateAccount(account *acc.Account, jwtSettings auth.JWTSettings) server.Response {
 	if resp := g.ValidateAccount(account); resp.ServerCode != 200 {
 		return resp
 	}
@@ -69,7 +69,7 @@ func (g *GormRepository) CreateAccount(account *acc.Account) server.Response {
 	if account.ID == 0 {
 		return server.Message("Failed to create account, connection error.", 501)
 	}
-	account.Token = account.GetToken()
+	account.Token = account.GetToken(jwtSettings)
 	account.Password = ""
 	return server.Response{Message: account, ServerCode: 200}
 }

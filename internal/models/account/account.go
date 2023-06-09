@@ -11,7 +11,6 @@ type Account struct {
 	Token    string `json:"token" sql:"-"`
 }
 
-func (account *Account) GetToken() string {
-
-	return auth.GenerateToken(account.ID)
+func (account *Account) GetToken(jwtSettings auth.JWTSettings) string {
+	return auth.GenerateToken(account.ID, jwtSettings)
 }
