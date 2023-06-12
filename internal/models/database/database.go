@@ -13,23 +13,41 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 )
 
-func Get(connStr string) DatabaseRepository {
+func ConnectDB(connStr string) *gorm.DB {
 	conn, err := gorm.Open("postgres", connStr)
 	if err != nil {
 		log.Fatalf("Error is %e \n Connection string is %s", err, connStr)
 	}
-	return &GormRepository{db: conn}
+	return conn
 }
 
-type DatabaseRepository interface {
-	AutoMigrate(models ...interface{}) error
+func GetAccountRepo(db *gorm.DB) AccountRepository {
+	return &GormRepository{db: db}
+}
+
+func GetSecretRepo(db *gorm.DB) SecretRepository {
+	return &GormRepository{db: db}
+}
+
+func GetMigrationRepo(db *gorm.DB) MigrationRepository {
+	return &GormRepository{db: db}
+}
+
+type AccountRepository interface {
 	CreateAccount(account *acc.Account, jwtSettings auth.JWTSettings) server.Response
 	ValidateAccount(account *acc.Account) server.Response
 	LoginAccount(email, password string, jwtSettings auth.JWTSettings) server.Response
+}
+
+type SecretRepository interface {
 	GetSecretByID(secretID uint) (*sec.Secret, error)
 	SaveSecret(s *sec.Secret) (*sec.Secret, error)
 	GetSecretsForUser(userID uint) ([]sec.Secret, error)
 	DeleteSecret(s *sec.Secret) error
+}
+
+type MigrationRepository interface {
+	AutoMigrate(models ...interface{}) error
 }
 
 type GormRepository struct {

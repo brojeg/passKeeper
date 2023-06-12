@@ -7,18 +7,27 @@ import (
 	auth "passKeeper/internal/models/auth"
 	db "passKeeper/internal/models/database"
 	server "passKeeper/internal/models/server"
+
+	"github.com/go-chi/chi"
 )
 
-type AccountHandler struct {
-	Repo        db.DatabaseRepository
+type accountHandler struct {
+	Repo        db.AccountRepository
 	jwtSettings auth.JWTSettings
 }
 
-func NewAccountHandler(repo db.DatabaseRepository, jwtSettings auth.JWTSettings) *AccountHandler {
-	return &AccountHandler{Repo: repo, jwtSettings: jwtSettings}
+func NewAccountHandler(repo db.AccountRepository, jwtSettings auth.JWTSettings) *accountHandler {
+	return &accountHandler{Repo: repo, jwtSettings: jwtSettings}
 }
 
-func (ah *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
+func (ah *accountHandler) Route() *chi.Mux {
+	router := chi.NewRouter()
+	router.Post("/register", ah.CreateAccount)
+	router.Post("/login", ah.Authenticate)
+	return router
+}
+
+func (ah *accountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	account := &acc.Account{}
 	err := json.NewDecoder(r.Body).Decode(account)
 	if err != nil {
@@ -30,7 +39,7 @@ func (ah *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) 
 	}
 	server.RespondWithMessage(w, resp.ServerCode, resp.Message)
 }
-func (ah *AccountHandler) Authenticate(w http.ResponseWriter, r *http.Request) {
+func (ah *accountHandler) Authenticate(w http.ResponseWriter, r *http.Request) {
 
 	acc := &acc.Account{}
 	err := json.NewDecoder(r.Body).Decode(acc)

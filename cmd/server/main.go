@@ -8,8 +8,11 @@ import (
 
 func main() {
 	sc := config.NewServerConfig()
-	repo := db.Get(sc.Database)
-	app := app.NewApp(*sc, repo)
+	conn := db.ConnectDB(sc.Database)
+	accountRepo := db.GetAccountRepo(conn)
+	secretRepo := db.GetSecretRepo(conn)
+	migrationRepo := db.GetMigrationRepo(conn)
+	app := app.NewApp(*sc, accountRepo, secretRepo, migrationRepo)
 	app.CreateTables()
 	app.StartWebServer()
 
