@@ -3,30 +3,19 @@ package config
 import (
 	"flag"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
-
-	acc "passKeeper/internal/models/account"
-	auth "passKeeper/internal/models/auth"
-	db "passKeeper/internal/models/database"
-	sec "passKeeper/internal/models/secret"
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
 )
 
-type App struct {
-	config ServerConfig
-	repo   db.DatabaseRepository
-	Server *http.Server
-}
-
-type ServerConfig struct {
+type Config struct {
 	HTTPServer
 	ExternalDependency
 	ServerAuth
 	ServerLog
+	Certificates
 }
 type HTTPServer struct {
 	ServerPort string `env:"RUN_ADDRESS" envDefault:"127.0.0.1:8080"`
@@ -41,17 +30,13 @@ type ServerAuth struct {
 type ServerLog struct {
 	Log string `env:"SERVER_LOG"`
 }
-
-func (a App) CreateTables() {
-	a.repo.AutoMigrate(&acc.Account{}, &sec.Secret{})
+type Certificates struct {
+	TLSCertFile string `env:"TLSCERTFILE"`
+	TLSKeyFile  string `env:"TLSKEYFILE"`
 }
 
-func (a App) DefineJWTConfig() {
-	auth.InitJWTPassword(a.config.JWTPassword, a.config.ExpirationTime)
-}
-
-func NewServerConfig() *ServerConfig {
-	sc := ServerConfig{}
+func NewServerConfig() *Config {
+	sc := Config{}
 	godotenv.Load(".env")
 	err := env.Parse(&sc.ExternalDependency)
 	env.Parse(&sc.HTTPServer)
@@ -61,6 +46,8 @@ func NewServerConfig() *ServerConfig {
 	_, envDBExists := os.LookupEnv("DATABASE_URI")
 	_, envJWTPAsswordExists := os.LookupEnv("JWT_PASSWORD")
 	_, envExpirationTimeExists := os.LookupEnv("EXPIRATION_TIME")
+	_, envTLSCertFileExists := os.LookupEnv("TLSCERTFILE")
+	_, envTLSKeyFileExists := os.LookupEnv("TLSKEYFILE")
 
 	if err != nil {
 		log.Fatalf("unable to parse ennvironment variables: %e", err)
@@ -96,6 +83,20 @@ func NewServerConfig() *ServerConfig {
 			return err
 		}
 		sc.ExpirationTime = intVar
+		return nil
+	})
+	flag.Func("tc", "TLS Cert file", func(flagValue string) error {
+		if envTLSCertFileExists {
+			return nil
+		}
+		sc.TLSCertFile = flagValue
+		return nil
+	})
+	flag.Func("tk", "TLS Key file", func(flagValue string) error {
+		if envTLSKeyFileExists {
+			return nil
+		}
+		sc.TLSKeyFile = flagValue
 		return nil
 	})
 	flag.Parse()

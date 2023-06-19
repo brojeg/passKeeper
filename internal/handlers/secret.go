@@ -1,19 +1,42 @@
-package config
+package handlers
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 	auth "passKeeper/internal/models/auth"
+	db "passKeeper/internal/models/database"
 	sec "passKeeper/internal/models/secret"
 	server "passKeeper/internal/models/server"
+	"passKeeper/internal/server/controllers"
 	"strconv"
 
 	"github.com/go-chi/chi"
 )
 
-func (a App) CreateSecret(w http.ResponseWriter, r *http.Request) {
+type secretHandler struct {
+	Repo        db.SecretRepository
+	jwtSettings auth.JWTSettings
+}
 
+func NewSecretHandler(repo db.SecretRepository, jwtConf auth.JWTSettings) *secretHandler {
+	return &secretHandler{
+		Repo:        repo,
+		jwtSettings: jwtConf,
+	}
+}
+
+func (sh *secretHandler) Route() *chi.Mux {
+	router := chi.NewRouter()
+	router.Use(controllers.JwtAuthenticationMiddleware(sh.jwtSettings))
+	router.Get("/{id}", sh.GetSecret)
+	router.Post("/", sh.CreateSecret)
+	router.Delete("/{id}", sh.DeleteSecret)
+	router.Get("/secrets", sh.GetSecrets)
+	return router
+}
+
+func (sh *secretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
@@ -43,7 +66,7 @@ func (a App) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		secret.ID = req.ID
 	}
 
-	savedSecret, err := a.repo.SaveSecret(&secret)
+	savedSecret, err := sh.Repo.SaveSecret(&secret)
 	if err != nil {
 		log.Printf("cannot create secret - %s", secret.SecretType)
 		server.RespondWithMessage(w, 500, "Could not save secret")
@@ -51,10 +74,9 @@ func (a App) CreateSecret(w http.ResponseWriter, r *http.Request) {
 	}
 
 	server.RespondWithMessage(w, 200, savedSecret)
-
 }
-func (a App) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 
+func (sh *secretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
@@ -72,18 +94,16 @@ func (a App) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 	secretToDelete.ID = uint(i)
 	secretToDelete.UserID = user
 
-	err = a.repo.DeleteSecret(&secretToDelete)
+	err = sh.Repo.DeleteSecret(&secretToDelete)
 	if err != nil {
 		server.RespondWithMessage(w, 500, "Could not delete secret")
 		return
 	}
 
 	server.RespondWithMessage(w, 200, nil)
-
 }
 
-func (a App) GetSecret(w http.ResponseWriter, r *http.Request) {
-
+func (sh *secretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
@@ -97,7 +117,7 @@ func (a App) GetSecret(w http.ResponseWriter, r *http.Request) {
 		server.RespondWithMessage(w, 400, "Bad request.")
 	}
 
-	data, err := a.repo.GetSecretByID(uint(i))
+	data, err := sh.Repo.GetSecretByID(uint(i))
 	if err != nil {
 		server.RespondWithMessage(w, 500, "Could not get Secret")
 	}
@@ -107,22 +127,19 @@ func (a App) GetSecret(w http.ResponseWriter, r *http.Request) {
 			server.RespondWithMessage(w, 200, data)
 		}
 	}
-
 }
 
-func (a App) GetSecrets(w http.ResponseWriter, r *http.Request) {
-
+func (sh *secretHandler) GetSecrets(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
 		return
 	}
-	secrets, err := a.repo.GetSecretsForUser(user)
+	secrets, err := sh.Repo.GetSecretsForUser(user)
 	if err != nil {
 		server.RespondWithMessage(w, 500, "Could not get secrets")
 		return
 	}
 	resp := server.Response{Message: secrets, ServerCode: 200}
 	server.RespondWithMessage(w, resp.ServerCode, resp.Message)
-
 }
