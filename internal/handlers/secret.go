@@ -8,19 +8,35 @@ import (
 	db "passKeeper/internal/models/database"
 	sec "passKeeper/internal/models/secret"
 	server "passKeeper/internal/models/server"
+	"passKeeper/internal/server/controllers"
 	"strconv"
 
 	"github.com/go-chi/chi"
 )
 
-type SecretHandler struct {
-	Repo db.DatabaseRepository
+type secretHandler struct {
+	Repo        db.SecretRepository
+	jwtSettings auth.JWTSettings
 }
 
-func NewSecretHandler(repo db.DatabaseRepository) *SecretHandler {
-	return &SecretHandler{Repo: repo}
+func NewSecretHandler(repo db.SecretRepository, jwtConf auth.JWTSettings) *secretHandler {
+	return &secretHandler{
+		Repo:        repo,
+		jwtSettings: jwtConf,
+	}
 }
-func (sh *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
+
+func (sh *secretHandler) Route() *chi.Mux {
+	router := chi.NewRouter()
+	router.Use(controllers.JwtAuthenticationMiddleware(sh.jwtSettings))
+	router.Get("/{id}", sh.GetSecret)
+	router.Post("/", sh.CreateSecret)
+	router.Delete("/{id}", sh.DeleteSecret)
+	router.Get("/secrets", sh.GetSecrets)
+	return router
+}
+
+func (sh *secretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
@@ -60,7 +76,7 @@ func (sh *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) {
 	server.RespondWithMessage(w, 200, savedSecret)
 }
 
-func (sh *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
+func (sh *secretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
@@ -87,7 +103,7 @@ func (sh *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) {
 	server.RespondWithMessage(w, 200, nil)
 }
 
-func (sh *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
+func (sh *secretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
@@ -113,7 +129,7 @@ func (sh *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (sh *SecretHandler) GetSecrets(w http.ResponseWriter, r *http.Request) {
+func (sh *secretHandler) GetSecrets(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.GetUserFromContext(r.Context())
 	if !ok {
 		server.RespondWithMessage(w, 500, "Could not get user from context")
